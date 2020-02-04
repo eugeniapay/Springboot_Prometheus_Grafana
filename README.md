@@ -372,6 +372,139 @@ spec:
 - From OCI CLI terminal, run 'kubectl create -f prometheus-service.yaml'.
 - To verify the service is created, use 'kubectl get services' to check if the load balancer is running. Note down the public IP of this load balancer.
 
-- Open a browser and go to http://<public_ip>:8080, you should see Prometheus loaded.
+- Open a browser and go to http://<public_ip>, you should see Prometheus loaded.
 - From the menu bar, click 'Status' > 'Targets'. You should see 'spring_micrometer' is in the list and has a status of 'up'.
 - Your Prometheus server is running and scraping your Springboot application metrics now!
+
+6. Setup Grafana 
+
+- Ensure Grafana image is pushed into OCIR.
+- Create a file called 'grafana-datasource-config.yaml' (to create a data source for Prometheus) with the following content:- 
+```
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  labels:
+    name: grafana-datasources
+data:
+  prometheus.yaml: |-
+    {
+        "apiVersion": 1,
+        "datasources": [
+            {
+               "access":"proxy",
+                "editable": true,
+                "name": "prometheus",
+                "orgId": 1,
+                "type": "prometheus",
+                "url": "http://[PROMETHEUS_SERVICE_PUBLIC_IP]",
+                "version": 1
+            }
+        ]
+    }
+```
+- Change the 'url' of 'prometheus' datasource.
+- From OCI CLI terminal, run 'kubectl create -f  grafana-datasource-config.yaml'.
+
+- Create a file called 'grafana-deployment.yaml' with the following content:- 
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana-deployment
+  labels:
+    app: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      name: grafana
+      labels:
+        app: grafana
+    spec:
+      containers:
+      - name: grafana
+        image: <region_code>.ocir.io/<tenancy_namespace>/grafana:latest
+        imagePullPolicy: Always
+        ports:
+        - name: grafana
+          containerPort: 3000
+        resources:
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+          requests: 
+            memory: "1Gi"
+            cpu: "500m"
+        volumeMounts:
+          - mountPath: /var/lib/grafana
+            name: grafana-storage
+          - mountPath: /etc/grafana/provisioning/datasources
+            name: grafana-datasources
+            readOnly: false
+      imagePullSecrets:
+        - name: ocirsecret
+      volumes:
+        - name: grafana-storage
+          emptyDir: {}
+        - name: grafana-datasources
+          configMap:
+              defaultMode: 420
+              name: grafana-datasources
+```
+- Change the image location to match the location used for docker push in the above yaml file.
+- If the OCIR secret is not named 'ocirsecret', change the secret name in the above yaml file accordingly too.
+- From OCI CLI terminal, run 'kubectl create -f grafana-deployment.yaml'.
+- To verify deployment, use 'kubectl get po' to check if the grafana pod is running.
+
+- Create a file called 'grafana-service.yaml' with the following content:- 
+```
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-service
+  annotations:
+      prometheus.io/scrape: 'true'
+      prometheus.io/port:   '3000'
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 3000
+  selector:
+    app: grafana
+```
+
+- From OCI CLI terminal, run 'kubectl create -f grafana-service.yaml'.
+- To verify the service is created, use 'kubectl get services' to check if the load balancer is running. Note down the public IP of this load balancer.
+- Open a browser and go to http://<public_ip>, you should see Grafana loaded.
+- Use the following default username and password to login to Grafana. Once you login with default credentials, it will prompt to change the default password.
+```
+User: admin
+Pass: admin
+```
+- There are many prebuilt Grafana templates available for various data sources. You can check out the templates at https://grafana.com/grafana/dashboards. 
+- Import the following Dashboard:-
+	1. Kubernetes Deployment Statefulset Daemonset metrics (ID: 8588)
+	2. JVM (Micrometer) (ID: 4701)
+- Your Grafana server is up and running now!
+
+7. Create Custom Dashboard using Grafana
+- The steps below will create a new dashboard and a chart to show the number of requests for endpoint '/greeting' for the Springboot application.
+- At Grafana web console, click "New dashboard" > "Choose Visualization" > "Singlestat".
+- At 'Visualization' tab (the second icon on the left hand menu bar), select 'Value' > 'Show' > 'Current'.
+- At 'Query' tab (the first icon on the left hand menu bar), select 'Prometheus' from 'Query' dropbox list.
+- Select 'Metrics' and the query is as below:-
+```
+http_server_requests_seconds_count{exception="None",instance="[SPRING_REST_SERVICE_PUBLIC_IP]:8080",job="spring_micrometer",method="GET",status="200",uri="/greeting"}
+```
+- Change the IP address to the spring_rest_service's public IP which you got from Step 5.
+- At 'General' tab (the third icon on the left hand menu bar), enter a name for the chart at 'General' > 'Title'.
+- The chart should show the total number of '/greeting' requests now.
+
+
