@@ -20,7 +20,7 @@ In addition, you should also have completed the following two guides:-
 - http://github.com/yyeung13/oke_ocir_demo: Setup OCIR/OKE as well as the OCI CLI to manage the kubernetes cluster
 - https://github.com/yyeung13/wercker_oke_demo: Use Wercker, Oracle Kubernetes Engine and OCI Registry for complete DevOps of a demo Springboot application
   
-Lastly, you should have Promethus and Grafana images pushed into OCIR.
+Lastly, you should have Promethus and Grafana images pushed into OCIR. Please refer to https://github.com/yyeung13/oke_ocir_demo > Step 7 on how to push images to OCIR.
 
 ## Demo Details
 
